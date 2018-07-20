@@ -12,18 +12,20 @@ MAP_SIZE = {
     'AbyssalReef': (200, 176),
     'ScoutAbyssalReef': (200, 176),
     'Acolyte': (168, 200),
-    'ScoutSimple64Dodge': (88, 96)
+    'ScoutSimple64Dodge': (88, 96),
+    'ScoutSimple64Dodge2': (88, 96)
 }
 
 class ZergScoutSelfplayEnv(SC2SelfplayGymEnv):
-    def __init__(self, **kwargs):
-        super(ZergScoutSelfplayEnv, self).__init__(**kwargs)
+    def __init__(self, agents, **kwargs):
+        super(ZergScoutSelfplayEnv, self).__init__(agents, **kwargs)
         self._init_action_space()
         self._scout = None
         self._owner_base_pos = None
         self._enemy_base_pos = None
         self._base_candidates = []
         self._map_size = None
+        self._scout_survive = False
         self._init_map_size(kwargs['map_name'])
 
     def _init_action_space(self):
@@ -35,12 +37,15 @@ class ZergScoutSelfplayEnv(SC2SelfplayGymEnv):
 
     def _reset(self):
         self._scout = None
+        self._scout_survive = False
         self._owner_base_pos = None
         self._enemy_base_pos = None
         self._base_candidates = []
 
         obs = super(ZergScoutSelfplayEnv, self)._reset()
         self._init_scout_and_base(obs)
+        for agent in self._agents:
+            agent.reset(self)
         print('*** ZergScoutEnv scout_unit=', self._scout.tag)
         print('*** ZergScoutEnv base_candidates=', self._base_candidates)
         return obs
@@ -56,6 +61,9 @@ class ZergScoutSelfplayEnv(SC2SelfplayGymEnv):
     def scout(self):
         return self._scout
 
+    def scout_survive(self):
+        return self._scout_survive
+
     def owner_base(self):
         return self._owner_base_pos
 
@@ -66,14 +74,19 @@ class ZergScoutSelfplayEnv(SC2SelfplayGymEnv):
         return self._map_size
 
     def _update(self, obs):
+        find_scout = False
         units = obs.observation['units']
         for u in units:
             if u.tag == self._scout.tag:
                 self._scout = u
+                find_scout = True
                 #print('update scout,pos=', (self._scout.float_attr.pos_x, 
                 #      self._scout.float_attr.pos_y))
         #print('update scout, {},{}'.format(self._scout.tag, 
         #        (self._scout.float_attr.pos_x, self._scout.float_attr.pos_y)))
+        if not find_scout and self._scout_survive:
+            self._scout_survive = False
+            print('***scout is killed***')
 
     def _init_scout_and_base(self, obs):
         units = obs.observation['units']
@@ -133,6 +146,7 @@ class ZergScoutSelfplayEnv(SC2SelfplayGymEnv):
             elif u.int_attr.unit_type == UNIT_TYPEID.ZERG_OVERLORD.value:
                 if self._scout is None:
                     self._scout = u
+                    self._scout_survive = True
                     print('find scout,unit=', self._scout.tag, ',unit_pos=',
                           (self._scout.float_attr.pos_x, self._scout.float_attr.pos_y))
             else:

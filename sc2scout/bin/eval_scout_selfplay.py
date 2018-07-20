@@ -25,13 +25,11 @@ flags.DEFINE_string("agent_interface_format", "feature",
                     "Agent Interface Format: [feature|rgb]")
 
 flags.DEFINE_integer("max_agent_episodes", 1, "Total agent episodes.")
-flags.DEFINE_integer("max_step", 10000, "Game steps per episode.")
+flags.DEFINE_integer("max_step", 4000, "Game steps per episode.")
 flags.DEFINE_integer("step_mul", 8, "Game steps per agent step.")
 flags.DEFINE_integer("random_seed", None, "Random_seed used in game_core.")
 
-flags.DEFINE_string("train_log_dir", './log', "train log directory")
-flags.DEFINE_string("checkpoint_path", './model_save', "load saved model")
-flags.DEFINE_integer("checkpoint_freq", 5000, "load saved model")
+flags.DEFINE_string("model_dir", None, "model directory")
 flags.DEFINE_string("wrapper", None, "the name of wrapper")
 flags.DEFINE_enum("agent_race", 'Z', races.keys(), "Agent's race.")
 flags.DEFINE_enum("oppo_race", 'Z', races.keys(), "Opponent's race.")
@@ -82,8 +80,6 @@ def main(unused_argv):
     if FLAGS.random_seed is None:
         rs = int((time.time() % 1) * 1000000)
 
-    logger.configure(dir=FLAGS.train_log_dir, format_strs=['log'])
-
     players = []
     players.append(sc2_env.Agent(races[FLAGS.agent_race]))
     players.append(sc2_env.Agent(races[FLAGS.oppo_race]))
@@ -117,25 +113,33 @@ def main(unused_argv):
         )
 
     env = make(FLAGS.wrapper, env)
-
     network = model(FLAGS.wrapper) #deepq.models.mlp([64, 32])
+    model_dir = FLAGS.model_dir
+    act = deepq.load_model(env, network, model_dir)
+    total_rwd = 0
 
-    print('params, lr={} bf={} ef={} ef_eps={}'.format(
-            FLAGS.param_lr, FLAGS.param_bf, FLAGS.param_ef, FLAGS.param_efps))
+    try:
+        obs = env.reset()
+        n_step = 0
+        # run this episode
+        while True:
+            n_step += 1
+            #print('observation=', obs, 'observation_none=', obs[None])
+            action = act(obs[None])[0]
+            obs, rwd, done, _ = env.step(action)
+            print('action=', action, '; rwd=', rwd)
+            #print('step rwd=', rwd, ',action=', action, "obs=", obs)
+            total_rwd += rwd
+            if done:
+                print("game over, total_rwd=", total_rwd)
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("evaluation over")
+    env.unwrapped.save_replay('evaluate')
+    env.close()
 
-    act = deepq.learn(
-        env,
-        q_func=network,
-        lr=FLAGS.param_lr,
-        max_timesteps=100000,
-        buffer_size=FLAGS.param_bf,
-        exploration_fraction=FLAGS.param_ef,
-        exploration_final_eps=FLAGS.param_efps,
-        checkpoint_path=FLAGS.checkpoint_path,
-        checkpoint_freq=FLAGS.checkpoint_freq,
-        print_freq=10,
-        callback=callback
-    )
 
 def entry_point():  # Needed so setup.py scripts work.
     app.run(main)
